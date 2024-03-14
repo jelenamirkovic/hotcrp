@@ -48,9 +48,7 @@ class MeetingTracker {
     }
 
 
-    /** @param Qrequest $qreq
-     * @return never
-     * @throws JsonCompletion */
+    /** @param Qrequest $qreq */
     static function trackerstatus_api(Contact $user, $qreq = null, $prow = null) {
         $tracker = self::lookup($user->conf);
         json_exit([

@@ -1,6 +1,6 @@
 <?php
 // reviewfieldsearch.php -- HotCRP classes for searching review fields
-// Copyright (c) 2006-2024 Eddie Kohler; see LICENSE.
+// Copyright (c) 2006-2023 Eddie Kohler; see LICENSE.
 
 /** @template T */
 abstract class ReviewFieldSearch {
@@ -22,35 +22,30 @@ abstract class ReviewFieldSearch {
         $this->finished = 0;
     }
 
-    /** @param ReviewInfo $rrow
-     * @param mixed $fv
-     * @return bool */
-    abstract function test_value($rrow, $fv);
-
     /** @param Contact $user
      * @param PaperInfo $prow
      * @param ReviewInfo $rrow
      * @return bool */
-    final function test_review($user, $prow, $rrow) {
-        return $this->test_value($rrow, $rrow->fval($this->rf));
-    }
+    abstract function test_review($user, $prow, $rrow);
 
     /** @return ?ReviewFieldSearch */
     static function parse(SearchWord $sword, ReviewField $rf,
                           ReviewSearchMatcher $rsm, PaperSearch $srch) {
         if ($sword->cword === "any") {
             return new Present_ReviewFieldSearch($rf, true);
-        } else if ($sword->cword === "none" || $sword->cword === "empty") {
+        } else if ($sword->cword === "none") {
             return new Present_ReviewFieldSearch($rf, false);
+        } else {
+            $nmsg = $srch->message_set()->message_count();
+            if (($st = $rf->parse_search($sword, $rsm, $srch))) {
+                return $st;
+            } else {
+                if ($srch->message_set()->message_count() === $nmsg) {
+                    $srch->lwarning($sword, "<0>Review field ‘" . $rf->name . "’ does not support this search");
+                }
+                return null;
+            }
         }
-        $nmsg = $srch->message_set()->message_count();
-        if (($st = $rf->parse_search($sword, $rsm, $srch))) {
-            return $st;
-        }
-        if ($srch->message_set()->message_count() === $nmsg) {
-            $srch->lwarning($sword, "<0>Review field ‘{$rf->name}’ does not support this search");
-        }
-        return null;
     }
 }
 
@@ -77,7 +72,8 @@ class Present_ReviewFieldSearch extends ReviewFieldSearch {
         }
     }
 
-    function test_value($rrow, $fv) {
+    function test_review($user, $prow, $rrow) {
+        $fv = $rrow->fval($this->rf);
         return $this->rf->value_present($fv) === $this->present;
     }
 }

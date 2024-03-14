@@ -82,7 +82,7 @@ class ReviewRefusalInfo {
     }
 
     /** @return bool */
-    function is_ghost() {
+    function is_tentative() {
         return false;
     }
 

@@ -222,8 +222,8 @@ class Title_PaperColumn extends PaperColumn {
     private $want_decoration = true;
     /** @var bool */
     private $want_pdf = true;
-    /** @var bool */
-    private $highlight;
+    /** @var string */
+    private $highlight = "";
     function __construct(Conf $conf, $cj) {
         parent::__construct($conf, $cj);
     }
@@ -242,7 +242,7 @@ class Title_PaperColumn extends PaperColumn {
         if ($this->want_decoration) {
             $pl->qopts["tags"] = 1;
         }
-        $this->highlight = $pl->search->has_field_highlighter("ti");
+        $this->highlight = $pl->search->field_highlighter("ti");
         return true;
     }
     function compare(PaperInfo $a, PaperInfo $b, PaperList $pl) {
@@ -251,8 +251,7 @@ class Title_PaperColumn extends PaperColumn {
     }
     function content(PaperList $pl, PaperInfo $row) {
         if ($row->title !== "") {
-            $regex = $this->highlight ? $pl->search->field_highlighter("ti", $row->_search_group) : null;
-            $highlight_text = Text::highlight($row->title, $regex, $highlight_count);
+            $highlight_text = Text::highlight($row->title, $this->highlight, $highlight_count);
         } else {
             $highlight_text = "[No title]";
             $highlight_count = 0;
@@ -414,11 +413,8 @@ class ReviewStatus_PaperColumn extends PaperColumn {
 }
 
 class Authors_PaperColumn extends PaperColumn {
-    /** @var bool */
     private $aufull;
-    /** @var bool */
     private $anonau;
-    /** @var bool */
     private $highlight;
     private $ianno;
     function __construct(Conf $conf, $cj) {
@@ -438,7 +434,7 @@ class Authors_PaperColumn extends PaperColumn {
     function prepare(PaperList $pl, $visible) {
         $this->aufull = $this->aufull ?? $pl->viewing("aufull");
         $this->anonau = $this->anonau ?? $pl->viewing("anonau");
-        $this->highlight = $pl->search->has_field_highlighter("au");
+        $this->highlight = $pl->search->field_highlighter("au");
         return $pl->user->can_view_some_authors();
     }
     function field_json(PaperList $pl) {
@@ -498,9 +494,8 @@ class Authors_PaperColumn extends PaperColumn {
             $affmap = $this->affiliation_map($row);
             $aus = $affout = [];
             $any_affhl = false;
-            $regex = $this->highlight ? $pl->search->field_highlighter("au", $row->_search_group) : null;
             foreach ($row->author_list() as $i => $au) {
-                $name = Text::highlight($au->name(), $regex, $didhl);
+                $name = Text::highlight($au->name(), $this->highlight, $didhl);
                 if (!$this->aufull
                     && ($first = htmlspecialchars($au->firstName))
                     && (!$didhl || substr($name, 0, strlen($first)) === $first)
@@ -510,7 +505,7 @@ class Authors_PaperColumn extends PaperColumn {
                 $aus[] = $name;
                 if ($affmap[$i] !== null) {
                     $out[] = join(", ", $aus);
-                    $affout[] = Text::highlight($affmap[$i], $regex, $didhl);
+                    $affout[] = Text::highlight($affmap[$i], $this->highlight, $didhl);
                     $any_affhl = $any_affhl || $didhl;
                     $aus = [];
                 }
@@ -558,14 +553,11 @@ class Authors_PaperColumn extends PaperColumn {
 }
 
 class Collab_PaperColumn extends PaperColumn {
-    /** @var bool */
-    private $highlight;
     function __construct(Conf $conf, $cj) {
         parent::__construct($conf, $cj);
         $this->override = PaperColumn::OVERRIDE_IFEMPTY;
     }
     function prepare(PaperList $pl, $visible) {
-        $this->highlight = $pl->search->has_field_highlighter("co");
         return !!$pl->conf->setting("sub_collab") && $pl->user->can_view_some_authors();
     }
     function content_empty(PaperList $pl, PaperInfo $row) {
@@ -579,8 +571,7 @@ class Collab_PaperColumn extends PaperColumn {
                 $x .= ($x === "" ? "" : "; ") . trim($c);
             }
         }
-        $regex = $this->highlight ? $pl->search->field_highlighter("co", $row->_search_group) : null;
-        return Text::highlight($x, $regex);
+        return Text::highlight($x, $pl->search->field_highlighter("co"));
     }
     function text(PaperList $pl, PaperInfo $row) {
         $x = "";
@@ -592,22 +583,15 @@ class Collab_PaperColumn extends PaperColumn {
 }
 
 class Abstract_PaperColumn extends PaperColumn {
-    /** @var bool */
-    private $highlight;
     function __construct(Conf $conf, $cj) {
         parent::__construct($conf, $cj);
-    }
-    function prepare(PaperList $pl, $visible) {
-        $this->highlight = $pl->search->has_field_highlighter("ab");
-        return true;
     }
     function content_empty(PaperList $pl, PaperInfo $row) {
         return $row->abstract() === "";
     }
     function content(PaperList $pl, PaperInfo $row) {
         $ab = $row->abstract();
-        $regex = $this->highlight ? $pl->search->field_highlighter("ab", $row->_search_group) : null;
-        $t = Text::highlight($ab, $regex, $highlight_count);
+        $t = Text::highlight($ab, $pl->search->field_highlighter("ab"), $highlight_count);
         $klass = strlen($t) > 190 ? "pl_longtext" : "pl_shorttext";
         if (!$highlight_count && ($format = $row->abstract_format())) {
             $pl->need_render = true;
@@ -664,7 +648,7 @@ class ReviewerType_PaperColumn extends PaperColumn {
         if ($rrow
             && ($this->not_me
                 ? $pl->user->can_view_review_identity($row, $rrow)
-                : !$rrow->is_ghost())) {
+                : !$rrow->is_tentative())) {
             $ranal = $pl->make_review_analysis($rrow, $row);
         } else {
             $ranal = null;

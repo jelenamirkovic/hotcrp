@@ -9,8 +9,8 @@ class ReviewerList_PaperColumn extends PaperColumn {
     private $topics = false;
     /** @var ?ReviewSearchMatcher */
     private $rsm;
-    /** @var ?list<?SearchTerm> */
-    private $hlterms;
+    /** @var ?SearchTerm */
+    private $hlterm;
     function __construct(Conf $conf, $cj) {
         parent::__construct($conf, $cj);
         if (isset($cj->rematch)) {
@@ -51,18 +51,9 @@ class ReviewerList_PaperColumn extends PaperColumn {
         } else {
             $this->override = PaperColumn::OVERRIDE_IFEMPTY;
         }
-        $nhlt = 0;
-        $hlt = [];
-        foreach ($pl->search->group_slice_terms() as $gt) {
-            if ($gt->about() === SearchTerm::ABOUT_REVIEW) {
-                $hlt[] = $gt;
-                ++$nhlt;
-            } else {
-                $hlt[] = null;
-            }
-        }
-        if ($nhlt > 0) {
-            $this->hlterms = $hlt;
+        $st = $pl->search->main_term();
+        if ($st->about() === SearchTerm::ABOUT_REVIEW) {
+            $this->hlterm = $st;
         }
         return true;
     }
@@ -83,8 +74,7 @@ class ReviewerList_PaperColumn extends PaperColumn {
                     $tv = $this->topics ? $prow->topic_interest_score($xrow->contactId) : null;
                     $t .= " " . $pf->unparse_span($tv);
                 }
-                if (($hlt = $this->hlterms[$prow->_search_group] ?? null)
-                    && $hlt->test($prow, $xrow)) {
+                if ($this->hlterm && $this->hlterm->test($prow, $xrow)) {
                     $t = "<span class=\"highlightmark taghh\">{$t}</span>";
                 }
                 $x[] = "<li>{$t}</li>";

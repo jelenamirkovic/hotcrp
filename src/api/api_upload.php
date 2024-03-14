@@ -154,7 +154,7 @@ class Upload_API {
     }
 
     /** @return array<string,mixed> */
-    function exec_start(Contact $user, Qrequest $qreq, ?PaperInfo $prow) {
+    function exec_start(Contact $user, Qrequest $qreq, PaperInfo $prow = null) {
         $size = self::qreqint($qreq->size);
         if ($size === null) {
             return self::_make_simple_error(400, "<0>Missing `size` parameter");
@@ -619,7 +619,7 @@ class Upload_API {
     }
 
     /** @return array<string,mixed> */
-    function exec(Contact $user, Qrequest $qreq, ?PaperInfo $prow) {
+    function exec(Contact $user, Qrequest $qreq, PaperInfo $prow = null) {
         $this->_cap = $this->_capd = null;
         if (!$this->tmpdir) {
             return self::_make_simple_error(501, "<0>Upload API not available on this site");
@@ -698,7 +698,7 @@ class Upload_API {
             && !$this->synchronous
             && JsonCompletion::$allow_short_circuit) {
             $json = new JsonResult($this->_make_result());
-            $json->emit($qreq);
+            $json->emit($qreq->valid_token());
             if (PHP_SAPI === "fpm-fcgi") {
                 fastcgi_finish_request();
             }
@@ -710,7 +710,7 @@ class Upload_API {
         }
     }
 
-    static function run(Contact $user, Qrequest $qreq, ?PaperInfo $prow) {
+    static function run(Contact $user, Qrequest $qreq, PaperInfo $prow = null) {
         return (new Upload_API($user->conf))->exec($user, $qreq, $prow);
     }
 

@@ -390,7 +390,7 @@ class Autoassign_Page {
         Ht::stash_script("var hotcrp_pc_tags=" . json_encode($tagsjson) . ";");
         foreach ($conf->viewable_user_tags($this->user) as $pctag) {
             if ($pctag !== "pc")
-                $pctyp_sel[] = [$pctag, "#{$pctag}"];
+                $pctyp_sel[] = [$pctag, "#$pctag"];
         }
         $pctyp_sel[] = ["__flip__", "flip"];
         $sep = "";
@@ -461,9 +461,17 @@ class Autoassign_Page {
     }
 
 
-    function redirect_uri() {
-        $nav = $this->qreq->navigation();
-        return $nav->resolve($this->conf->hoturl_raw("autoassign", $this->qreq_parameters()));
+    function detach() {
+        // The Autoassigner_Batch is about to run the autoassigner;
+        // we should arrange a redirect.
+        if (PHP_SAPI === "fpm-fcgi") {
+            $nav = $this->qreq->navigation();
+            $url = $nav->resolve($this->conf->hoturl_raw("autoassign", $this->qreq_parameters()));
+            header("Location: {$url}");
+            $this->qreq->qsession()->commit();
+            fastcgi_finish_request();
+            $this->detached = true;
+        }
     }
 
     function start_job() {
@@ -513,18 +521,20 @@ class Autoassign_Page {
             $argmap->$k1 = $k;
         }
 
-        $tok = Job_Capability::make($this->user, "Autoassign", ["batch/autoassign.php", "-je", "-D"])
-            ->set_input("assign_argv", $argv)
+        $tok = Job_Capability::make($this->user, "batch/autoassign", $argv)
             ->set_input("argmap", $argmap);
         $this->jobid = $tok->create();
         assert($this->jobid !== null);
 
-        $s = Job_Capability::run_live($tok, $this->qreq, [$this, "redirect_uri"]);
+        $getopt = Autoassign_Batch::make_getopt();
+        $arg = $getopt->parse(["batch/autoassign", "-j{$this->jobid}", "-D"]);
+        try {
+            (new Autoassign_Batch($this->conf, $arg, $getopt, [$this, "detach"]))->run();
+        } catch (CommandLineException $ex) {
+        }
 
         // Autoassign_Batch has completed its work.
-        if ($s === "forked") {
-            throw new Redirection($this->redirect_uri());
-        } else if ($s === "detached") {
+        if ($this->detached) {
             exit();
         }
         $tok->load_data();
@@ -553,7 +563,7 @@ class Autoassign_Page {
 
     function run_try_job() {
         try {
-            $tok = Job_Capability::find($this->conf, $this->qreq->job, "Autoassign", true);
+            $tok = Job_Capability::find($this->qreq->job, $this->conf, "batch/autoassign", true);
         } catch (CommandLineException $ex) {
             $tok = null;
         }

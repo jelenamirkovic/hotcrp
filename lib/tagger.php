@@ -569,7 +569,7 @@ class TagMap {
     /** @param string $tag
      * @param string $ltag
      * @return ?TagInfo */
-    private function update_patterns($tag, $ltag, ?TagInfo $ti) {
+    private function update_patterns($tag, $ltag, TagInfo $ti = null) {
         if (!$this->pattern_re) {
             $a = [];
             foreach ($this->pattern_storage as $p) {
@@ -1069,7 +1069,7 @@ class TagMap {
     /** @param 0|1 $ctype
      * @param ?string $tags
      * @return string */
-    function censor($ctype, $tags, Contact $user, ?PaperInfo $prow = null) {
+    function censor($ctype, $tags, Contact $user, PaperInfo $prow = null) {
         // empty tag optimization
         if ($tags === null || $tags === "") {
             return "";
@@ -1686,8 +1686,8 @@ class Tagger {
             }
             $b = self::unparse_emoji_html($e, $count);
             if ($type === self::DECOR_PAPER) {
-                $q = htmlspecialchars("emoji:{$e}");
-                $b = "<a href=\"\" class=\"q uic js-sq\" data-q=\"{$q}\">{$b}</a>";
+                $url = $this->conf->hoturl("search", ["q" => "emoji:{$e}"]);
+                $b = "<a class=\"q\" href=\"{$url}\">{$b}</a>";
             }
             if ($x === "") {
                 $x = " ";
@@ -1695,19 +1695,18 @@ class Tagger {
             $x .= $b;
         }
         foreach ($dt->badges($tags) as $tb) {
-            $klass = "badge badge-{$tb[1]}";
+            $klass = " class=\"badge badge-{$tb[1]}\"";
             if (str_starts_with($tb[1], "rgb-")) {
                 TagMap::stash_ensure_pattern("badge-{$tb[1]}");
             }
             $tag = $this->unparse($tb[0]);
-            if ($type === self::DECOR_PAPER && ($q = $this->js_sq($tag, false)) !== null) {
-                $dq = $q === "" ? "" : " data-q=\"" . htmlspecialchars($q) . "\"";
-                $b = "<a href=\"\" class=\"uic js-sq {$klass}\"{$dq}>#{$tag}</a>";
+            if ($type === self::DECOR_PAPER && ($link = $this->link($tag))) {
+                $b = "<a href=\"{$link}\"{$klass}>#{$tag}</a>";
             } else {
                 if ($type !== self::DECOR_USER) {
                     $tag = "#{$tag}";
                 }
-                $b = "<span class=\"{$klass}\">{$tag}</span>";
+                $b = "<span{$klass}>{$tag}</span>";
             }
             $x .= ' ' . $b;
         }
@@ -1728,13 +1727,13 @@ class Tagger {
     }
 
     /** @param string $tv
-     * @param bool $always
-     * @return ?string */
-    private function js_sq($tv, $always) {
+     * @param int $flags
+     * @return string|false */
+    function link($tv, $flags = 0) {
         if (ctype_digit($tv[0])) {
             $p = strlen((string) $this->_contactId);
             if (substr($tv, 0, $p) != $this->_contactId || $tv[$p] !== "~") {
-                return null;
+                return false;
             }
             $tv = substr($tv, $p);
         }
@@ -1743,14 +1742,13 @@ class Tagger {
         if ($dt->has(TagInfo::TFM_VOTES)
             && ($dt->is_votish($base)
                 || ($base[0] === "~" && $dt->is_allotment(substr($base, 1))))) {
-            return "#{$base} showsort:-#{$base}";
-        } else if (!$always) {
-            return "";
+            $q = "#{$base} showsort:-#{$base}";
         } else if ($base === $tv) {
             $q = "#{$base}";
         } else {
             $q = "order:#{$base}";
         }
+        return $this->conf->hoturl("search", ["q" => $q], $flags);
     }
 
     /** @param list<string>|string $viewable
@@ -1768,13 +1766,11 @@ class Tagger {
             if (!($base = Tagger::tv_tag($tv))) {
                 continue;
             }
-            $q = $this->js_sq($tv, false);
-            if ($q === null) {
-                $tx = "#{$tv}";
-            } else {
+            if (($link = $this->link($tv))) {
                 $tsuf = substr($tv, strlen($base));
-                $dq = $q === "" ? "" : " data-q=\"" . htmlspecialchars($q) . "\"";
-                $tx = "<a href=\"\" class=\"qo ibw uic js-sq\"{$dq}><u class=\"x\">#{$base}</u>{$tsuf}</a>";
+                $tx = "<a class=\"qo ibw\" href=\"{$link}\"><u class=\"x\">#{$base}</u>{$tsuf}</a>";
+            } else {
+                $tx = "#{$tv}";
             }
             if (($cc = $dt->styles($base))) {
                 $ccs = join(" ", $cc);

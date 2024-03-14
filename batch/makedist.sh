@@ -1,4 +1,4 @@
-export VERSION=3.0.0
+export VERSION=3.0b3
 
 # check that schema.sql and updateschema.php agree on schema version
 updatenum=`grep 'settings.*allowPaperOption.*=\|update_schema_version' src/updateschema.php | tail -n 1 | sed 's/.*= *//;s/.*[(] *//;s/[;)].*//'`
@@ -155,7 +155,6 @@ lib/hashanalysis.php
 lib/hclcolor.php
 lib/ht.php
 lib/icons.php
-lib/isovideomimetype.php
 lib/json.php
 lib/jsonexception.php
 lib/jsonparser.php
@@ -199,7 +198,6 @@ src/api/api_events.php
 src/api/api_follow.php
 src/api/api_formatcheck.php
 src/api/api_graphdata.php
-src/api/api_job.php
 src/api/api_mail.php
 src/api/api_paper.php
 src/api/api_paperpc.php
@@ -242,7 +240,6 @@ src/backuppattern.php
 src/banal
 src/capabilities/cap_authorview.php
 src/capabilities/cap_bearer.php
-src/capabilities/cap_job.php
 src/capabilities/cap_reviewaccept.php
 src/checkformat.php
 src/commentinfo.php
@@ -290,7 +287,6 @@ src/formulas/f_topic.php
 src/formulas/f_topicscore.php
 src/help/h_bulkassign.php
 src/help/h_chairsguide.php
-src/help/h_developer.php
 src/help/h_formulas.php
 src/help/h_jsonsettings.php
 src/help/h_keywords.php
@@ -476,7 +472,6 @@ src/searchoperator.php
 src/searchselection.php
 src/searchsplitter.php
 src/searchterm.php
-src/searchviewcommand.php
 src/searchword.php
 src/sessionlist.php
 src/settinginfoset.php
@@ -491,7 +486,6 @@ src/settings/s_json.php
 src/settings/s_messages.php
 src/settings/s_namedsearch.php
 src/settings/s_options.php
-src/settings/s_preference.php
 src/settings/s_response.php
 src/settings/s_review.php
 src/settings/s_reviewfieldcondition.php
@@ -576,12 +570,12 @@ images/view48.png
 images/viewas.png
 
 scripts/.htaccess
-scripts/buzzer.js
 scripts/d3-hotcrp.min.js
+scripts/buzzer.js
 scripts/emojicodes.json
 scripts/graph.js
 scripts/jquery-1.12.4.min.js
-scripts/jquery-3.7.1.min.js
+scripts/jquery-3.6.4.min.js
 scripts/script.js
 scripts/settings.js
 

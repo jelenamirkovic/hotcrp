@@ -223,7 +223,7 @@ class Contacts_PaperOption extends PaperOption {
     }
 
     /** @param PaperValue $reqov */
-    static private function echo_editable_newcontact_row(PaperTable $pt, $anum, $reqov, ?Author $au) {
+    static private function echo_editable_newcontact_row(PaperTable $pt, $anum, $reqov, Author $au = null) {
         if ($anum === '$') {
             $name = $email = "";
         } else {

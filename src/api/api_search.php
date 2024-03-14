@@ -56,7 +56,7 @@ class Search_API {
         }
     }
 
-    static function fieldhtml(Contact $user, Qrequest $qreq, ?PaperInfo $prow) {
+    static function fieldhtml(Contact $user, Qrequest $qreq, PaperInfo $prow = null) {
         if ($qreq->f === null) {
             return JsonResult::make_missing_error("f");
         }
@@ -85,7 +85,7 @@ class Search_API {
         return $j;
     }
 
-    static function fieldtext(Contact $user, Qrequest $qreq, ?PaperInfo $prow) {
+    static function fieldtext(Contact $user, Qrequest $qreq, PaperInfo $prow = null) {
         if ($qreq->f === null) {
             return JsonResult::make_missing_error("f");
         }

@@ -43,7 +43,7 @@ class Autoassign_Batch {
     /** @var bool */
     public $profile = false;
     /** @var ?callable */
-    public $detacher;
+    public $attached;
     /** @var ?TokenInfo */
     private $_jtok;
 
@@ -55,13 +55,13 @@ class Autoassign_Batch {
     }
 
     /** @param array<string,mixed> $arg
-     * @param ?callable $detacher */
-    function __construct(Conf $conf, $arg, Getopt $getopt, $detacher = null) {
+     * @param ?callable $attached */
+    function __construct(Conf $conf, $arg, Getopt $getopt, $attached = null) {
         $this->conf = $conf;
         $this->getopt = $getopt;
-        $this->detacher = $detacher;
+        $this->attached = $attached;
         if (isset($arg["job"])) {
-            $this->_jtok = Job_Capability::claim($this->conf, $arg["job"], "Autoassign");
+            $this->_jtok = Job_Capability::claim($arg["job"], $this->conf, "batch/autoassign");
             $this->user = $this->_jtok->user() ?? $conf->root_user();
         } else {
             $this->user = $conf->root_user();
@@ -76,7 +76,7 @@ class Autoassign_Batch {
             try {
                 $this->_jtok->update_use();
                 $this->parse_arg($arg);
-                $this->parse_arg($getopt->parse($this->_jtok->input("assign_argv") ?? []));
+                $this->parse_arg($getopt->parse($this->_jtok->input("argv") ?? []));
                 $this->complete_arg();
             } catch (CommandLineException $ex) {
                 $this->report([MessageItem::error("<0>{$ex->getMessage()}")], $ex->exitStatus);
@@ -100,6 +100,7 @@ class Autoassign_Batch {
                 $this->_jtok->change_data("exit_status", $exit_status)
                     ->change_data("status", "done");
             }
+            Conf::set_current_time(microtime(true));
             $this->_jtok->update_use()->update();
         } else {
             $s = MessageSet::feedback_text($message_list);
@@ -219,7 +220,7 @@ class Autoassign_Batch {
     }
 
     function report_progress($progress) {
-        $this->_jtok->change_data("progress", $progress)->update_use()->update();
+        $this->_jtok->change_data("progress", $progress)->update();
         set_time_limit(240);
     }
 
@@ -253,9 +254,9 @@ class Autoassign_Batch {
         $this->report($aa->message_list(), $aa->has_error() ? 1 : null);
 
         // run autoassigner
-        if ($this->detacher) {
-            call_user_func($this->detacher, $this);
-            $this->detacher = null;
+        if ($this->attached) {
+            call_user_func($this->attached, $this);
+            $this->attached = null;
         }
         if ($this->_jtok) {
             $aa->add_progress_function([$this, "report_progress"]);
@@ -368,13 +369,11 @@ Usage: php batch/autoassign.php [--dry-run] AUTOASSIGNER [PARAM=VALUE]...")
          ->interleave(true);
     }
 
-    /** @param list<string> $argv
-     * @param ?callable $detacher
-     * @return Autoassign_Batch */
-    static function make_args($argv, $detacher = null) {
+    /** @return Autoassign_Batch */
+    static function make_args($argv) {
         $getopt = self::make_getopt();
         $arg = $getopt->parse($argv);
         $conf = initialize_conf($arg["config"] ?? null, $arg["name"] ?? null);
-        return new Autoassign_Batch($conf, $arg, $getopt, $detacher);
+        return new Autoassign_Batch($conf, $arg, $getopt);
     }
 }

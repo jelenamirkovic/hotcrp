@@ -22,12 +22,18 @@ body {
 select, button {
 	color: #222222;
 }
+.text-color {
+	color: #333333;
+}
 
 .dark {
 	color: white;
 }
 .dark select, .dark button {
 	color: #eeeeee;
+}
+.dark .text-color {
+	color: white;
 }
 
 :link, :visited, .link {
@@ -59,9 +65,6 @@ select, button {
 
 .dim {
 	color: #888888;
-}
-.color-red {
-	color: #ff0000;
 }
 
 .ps-withdrawn {
@@ -1432,8 +1435,7 @@ button.btn-t {
 	font-size: 120%;
 }
 .btn-licon-s {
-	padding-left: 5px;
-	padding-right: 5px;
+	padding: 1px 4px;
 }
 button:hover, .btn:hover, select:hover {
 	border-color: #a5a5a5;
@@ -2880,7 +2882,7 @@ del .rto {
 	color: red;
 	border-color: red;
 }
-.rtghost {
+.rttentative {
 	opacity: 0.4;
 	border-style: dotted;
 }
@@ -3372,7 +3374,7 @@ button.draghandle.disabled:hover, button.draghandle:disabled:hover {
 }
 
 .editformulas-formula, .editsearches-search {
-	margin: 1em 0 2em;
+	margin: 1em 0 3em;
 }
 
 span.match {

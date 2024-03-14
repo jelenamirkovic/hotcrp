@@ -166,12 +166,6 @@ class MessageItem implements JsonSerializable {
 
     /** @param ?string $msg
      * @return MessageItem */
-    static function urgent_note($msg) {
-        return new MessageItem(null, $msg, MessageSet::URGENT_NOTE);
-    }
-
-    /** @param ?string $msg
-     * @return MessageItem */
     static function inform($msg) {
         return new MessageItem(null, $msg, MessageSet::INFORM);
     }

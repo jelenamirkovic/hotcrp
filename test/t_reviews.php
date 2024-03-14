@@ -1077,7 +1077,7 @@ But, in a larger sense, we can not dedicate -- we can not consecrate -- we can n
         xassert_search($this->u_chair, "ovemer:3", "1 19");
         xassert_search($this->u_chair, "ovemer:4", "19 20 21");
         xassert_search($this->u_chair, "ovemer:5", "20 21");
-        xassert_search($this->u_chair, "ovemer:empty", "21");
+        xassert_search($this->u_chair, "ovemer:none", "21");
 
         xassert_search($this->u_chair, "ovemer:any ovemer:none:1", "1 18 19 21");
         xassert_search($this->u_chair, "ovemer:any ovemer:=0:1", "1 18 19 21");
@@ -1130,7 +1130,7 @@ But, in a larger sense, we can not dedicate -- we can not consecrate -- we can n
         xassert_search($this->u_chair, "ovemer:C", "1 19");
         xassert_search($this->u_chair, "ovemer:B", "19 20 21");
         xassert_search($this->u_chair, "ovemer:A", "20 21");
-        xassert_search($this->u_chair, "ovemer:empty", "21");
+        xassert_search($this->u_chair, "ovemer:none", "21");
 
         xassert_search($this->u_chair, "ovemer:any ovemer:none:E", "1 18 19 21");
         xassert_search($this->u_chair, "ovemer:any ovemer:=0:E", "1 18 19 21");
@@ -1274,11 +1274,6 @@ But, in a larger sense, we can not dedicate -- we can not consecrate -- we can n
         xassert_search($this->u_chair, "has:proposal admin:me", "17");
         xassert_search($this->u_lixia, "has:proposal admin:me", "");
         xassert_search($this->u_mgbaker, "has:proposal", "17");
-
-        $xqreq = new Qrequest("POST", ["email" => "external4@_.com", "firstName" => "Beth  ", "lastName" => " March", "affiliation" => "Transcendent"]);
-        $paper17 = $this->conf->checked_paper_by_id(17);
-        $result = RequestReview_API::requestreview($this->u_lixia, $xqreq, $paper17);
-        MailChecker::check_db("test06-external4-request17");
     }
 
     function test_search_routstanding() {
@@ -1429,37 +1424,5 @@ But, in a larger sense, we can not dedicate -- we can not consecrate -- we can n
         xassert_eqq(ReviewField::clean_name("Fudge (shown only to chairs)"), "Fudge");
         xassert_eqq(ReviewField::clean_name("Fudge (secret)"), "Fudge");
         xassert_eqq(ReviewField::clean_name("Fudge (shown only to Emmanuel Macron)"), "Fudge (shown only to Emmanuel Macron)");
-    }
-
-    function test_self_assign() {
-        save_review(30, $this->u_lixia, ["ready" => true, "ovemer" => 2, "revexp" => 2]);
-        $prow = $this->conf->checked_paper_by_id(30);
-        $rrow = $prow->review_by_user($this->u_lixia);
-        xassert_eqq($rrow->requestedBy, $this->u_lixia->contactId);
-        xassert_eqq($rrow->reviewType, REVIEW_PC);
-        xassert_neqq($rrow->rflags & ReviewInfo::RF_SELF_ASSIGNED, 0);
-        xassert($prow->contact_info($this->u_lixia)->self_assigned());
-    }
-
-    function test_rflags_type() {
-        for ($i = 0; $i <= REVIEW_META; ++$i) {
-            xassert_eqq(ReviewInfo::rflags_type(1 << $i), $i);
-        }
-        xassert_eqq(ReviewInfo::RF_LIVE, 1);
-        xassert_eqq(ReviewInfo::RFM_NONDRAFT, ReviewInfo::RF_DELIVERED | ReviewInfo::RF_ADOPTED | ReviewInfo::RF_SUBMITTED);
-        xassert_eqq(ReviewInfo::RFM_NONEMPTY, ReviewInfo::RF_ACCEPTED | ReviewInfo::RF_DRAFTED | ReviewInfo::RF_DELIVERED | ReviewInfo::RF_ADOPTED | ReviewInfo::RF_SUBMITTED);
-    }
-
-    function test_ensure_full_reviews_preserves_prop_changes() {
-        $prow = $this->conf->checked_paper_by_id(30, null, ["reviewSignatures" => true]);
-        $rrow = $prow->review_by_user($this->u_lixia);
-        $t = ($rrow->reviewSubmitted ? : Conf::$now) + 1;
-        $rrow->set_prop("reviewSubmitted", $t);
-        xassert($rrow->prop_changed());
-
-        $prow->ensure_full_reviews();
-        $rrow2 = $prow->review_by_user($this->u_lixia);
-        xassert_neqq($rrow, $rrow2);
-        xassert_eqq($rrow->reviewSubmitted, $rrow2->reviewSubmitted);
     }
 }

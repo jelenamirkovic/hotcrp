@@ -58,6 +58,7 @@ class Paper_Page {
             $pr = new PaperRequest($this->qreq, false);
             $this->prow = $this->conf->paper = $pr->prow;
         } catch (Redirection $redir) {
+            assert(PaperRequest::simple_qreq($this->qreq));
             throw $redir;
         } catch (PermissionProblem $perm) {
             $this->error_exit($perm);

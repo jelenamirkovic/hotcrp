@@ -74,10 +74,8 @@ class PaperTable {
     private $foldmap;
     /** @var array<string,int> */
     private $foldnumber;
-    /** @var null|-1|0|1 */
-    private $_ready_state;
     /** @var ?array */
-    private $_ready_condition;
+    private $_autoready;
 
     /** @var ?CheckFormat */
     public $cf;
@@ -351,7 +349,7 @@ class PaperTable {
         $this->useRequest = $useRequest;
     }
 
-    function set_review_values(?ReviewValues $rvalues = null) {
+    function set_review_values(ReviewValues $rvalues = null) {
         $this->review_values = $rvalues;
     }
 
@@ -536,16 +534,7 @@ class PaperTable {
         $this->print_field_description($opt);
         if ((!$input && $this->edit_mode === 2)
             || ($this->admin && !$opt->test_editable($this->prow))) {
-            if ($input) {
-                $ml = [MessageItem::marked_note("<0>Only administrators can edit this field.")];
-            } else if ($opt->required <= 0
-                       || $opt->value_present($this->prow->force_option($opt))
-                       || $this->prow->timeSubmitted > 0) {
-                $ml = [MessageItem::marked_note("<0>This field is not currently editable.")];
-            } else {
-                $ml = [MessageItem::urgent_note("<0>This required field is not currently editable.")];
-            }
-            echo MessageSet::feedback_html($ml);
+            echo MessageSet::feedback_html([MessageItem::marked_note($input ? "<0>Only administrators can edit this field." : "<0>This field is not currently editable.")]);
         }
         if ($input) {
             echo Ht::hidden("has_{$opt->formid}", 1);
@@ -759,46 +748,38 @@ class PaperTable {
                     || (!$this->conf->opt("noPapers") && $this->prow->paperStorageId <= 1)));
     }
 
-    /** @return -1|0|1 */
-    private function ready_state() {
-        if ($this->_ready_state !== null) {
-            return $this->_ready_state;
-        }
-        if ($this->allow_edit_final) {
-            return 0;
-        }
-        $sexprs = [];
-        foreach ($this->prow->form_fields() as $o) {
-            if ($o->required <= 0
-                || !$o->test_can_exist()) {
-                continue;
+    /** @return bool */
+    private function need_autoready() {
+        if ($this->_autoready === null) {
+            $l = [];
+            if (!$this->allow_edit_final) {
+                foreach ($this->prow->form_fields() as $o) {
+                    if ($o->required <= 0
+                        || !$o->test_can_exist()
+                        || !($prc = $o->present_script_expression())) {
+                        continue;
+                    }
+                    $exc = $o->exists_script_expression($this->prow);
+                    if ($exc === null && $o->exists_condition() !== null) {
+                        // complex exists condition, cannot be scripted
+                        continue;
+                    }
+                    if ($exc !== null && $exc !== true) {
+                        $not_exc = ["type" => "not", "child" => [$exc]];
+                        $prc = ["type" => "or", "child" => [$not_exc, $prc]];
+                    }
+                    $l[] = $prc;
+                }
             }
-            $prc = $this->user->can_edit_option($this->prow, $o)
-                ? $o->present_script_expression()
-                : $o->value_present($this->prow->force_option($o));
-            if ($prc === null) {
-                continue;
+            if (empty($l)) {
+                $this->_autoready = [];
+            } else if (count($l) === 1) {
+                $this->_autoready = $l[0];
+            } else {
+                $this->_autoready = ["type" => "and", "child" => $l];
             }
-            $exc = $o->exists_script_expression($this->prow);
-            if ($exc === null && $o->exists_condition() !== null) {
-                // complex exists condition, cannot be scripted
-                continue;
-            }
-            if ($exc !== null && $exc !== true) {
-                $prc = Op_SearchTerm::combine_script_expressions("or", [
-                    Op_SearchTerm::combine_script_expressions("not", [$exc]),
-                    $prc
-                ]);
-            }
-            $sexprs[] = $prc;
         }
-        if (empty($sexprs)) {
-            $this->_ready_state = 0;
-        } else {
-            $this->_ready_condition = Op_SearchTerm::combine_script_expressions("and", $sexprs);
-            $this->_ready_state = $this->_ready_condition === false ? -1 : 1;
-        }
-        return $this->_ready_state;
+        return !empty($this->_autoready);
     }
 
     private function print_editable_complete() {
@@ -811,8 +792,8 @@ class PaperTable {
 
         $sr = $this->prow->submission_round();
         $checked = $this->is_ready(true);
-        $autoready = $this->ready_state();
-        $ready_open = $autoready <= 0 || $this->prow->paperStorageId > 1;
+        $autoready = $this->need_autoready();
+        $ready_open = !$autoready || $this->prow->paperStorageId > 1;
         if ($sr->freeze) {
             $label_class = $checked ? null : "is-error";
             $complete = "complete";
@@ -829,8 +810,8 @@ class PaperTable {
             Ht::add_tokens("checki mb-1", $label_class),
             '"><span class="checkc">',
             Ht::checkbox("status:submit", 1, $checked && $ready_open, [
-                "disabled" => $autoready < 0 || !$ready_open,
-                "data-autoready" => $autoready > 0 && !$ready_open,
+                "disabled" => !$ready_open,
+                "data-autoready" => $autoready && !$ready_open,
                 "data-urgent" => Conf::$now <= $sr->submit
             ]),
             '</span><strong>',
@@ -844,22 +825,23 @@ class PaperTable {
             $updatem = $this->conf->_c("paper_edit", "<5>You can update this {submission} until {:expandedtime}.", $sr->update);
         }
         if (Conf::$now <= $sr->submit) {
-            $submitm = $this->conf->_c("paper_edit", "<5>{Submissions} marked {$complete} as of {:expandedtime} will be evaluated.", $sr->submit, $sr->update);
+            $submitm = $this->conf->_c("paper_edit", "<5>{Submissions} not marked {$complete} by {:expandedtime} will not be evaluated.", $sr->submit, $sr->update);
         }
         if ($sr->freeze) {
             $freezem = $this->conf->_c("paper_edit", "<5>Completed {submissions} are frozen and cannot be changed further.");
         }
-        if ($autoready !== 0) {
-            $requiredm = $this->conf->_c("paper_edit", "<5>You must fill out all required fields to mark the {submission} as {$complete}.");
-            if ($requiredm) {
-                echo '<p class="feedback ',
-                    ($submitm ? "is-urgent-note" : "is-note"),
-                    ' if-unready-required', ($ready_open ? ' hidden">' : '">'),
-                    Ftext::as(5, $requiredm), '</p>';
-            }
+        if ($autoready) {
+            $requiredm = $this->conf->_c("paper_edit", "<5>You must fill out all required fields before marking the {submission} {$complete}.");
+            echo '<p class="feedback ',
+                $updatem || $submitm ? "is-urgent-note" : "is-note",
+                ' if-unready-required',
+                $ready_open ? " hidden" : "", '">',
+                Ftext::as(5, Ftext::join_nonempty(" ", [$updatem, $submitm, $freezem, $requiredm])),
+                '</p>';
         }
         if ($submitm) {
-            echo '<p class="feedback is-urgent-note if-unready">',
+            echo '<p class="feedback is-urgent-note if-unready',
+                $ready_open ? "" : " hidden", '">',
                 Ftext::as(5, Ftext::join_nonempty(" ", [$updatem, $submitm, $freezem])), '</p>';
         }
         if ($updatem || $freezem) {
@@ -1956,7 +1938,7 @@ class PaperTable {
             if (!$missing) {
                 $this->_main_message("<5><strong>" . $this->conf->_5("<5>This {submission} is marked as not ready for review.") . "</strong>", MessageSet::URGENT_NOTE);
             }
-            $this->_main_message($this->conf->_c("paper_edit", "<0>Incomplete {submissions} will not be evaluated.", new FmtArg("deadline", $sr->update)), MessageSet::URGENT_NOTE);
+            $this->_main_message($this->conf->_c("paper_edit", "<0>Incomplete {submissions} will not be considered.", new FmtArg("deadline", $sr->update)), MessageSet::URGENT_NOTE);
             return;
         }
 
@@ -2347,8 +2329,9 @@ class PaperTable {
             "class" => "need-unload-protection need-diff-check ui-submit js-submit-paper",
             "data-differs-toggle" => "paper-alert"
         ];
-        if ($this->ready_state() !== 0) {
-            $form_js["data-autoready-condition"] = json_encode_browser($this->_ready_condition);
+        if ($this->need_autoready()) {
+            $form_js["class"] .= " uich js-paper-autoready";
+            $form_js["data-autoready-condition"] = json_encode_browser($this->_autoready);
         }
         if ($this->prow->timeSubmitted > 0) {
             $form_js["data-submitted"] = $this->prow->timeSubmitted;
@@ -2406,7 +2389,7 @@ class PaperTable {
         $overrides = $this->user->add_overrides(Contact::OVERRIDE_EDIT_CONDITIONS);
         $sr = $this->prow->submission_round();
         echo '<div class="pedcard-head"><h2><span class="pedcard-header-name">',
-            $this->conf->_c5("paper_edit", $this->prow->paperId ? "<0>Edit {sclass} {submission}" : "<0>New {sclass} {submission}", new FmtArg("sclass", $sr->tag), new FmtArg("draft", $this->prow->timeSubmitted <= 0)),
+            $this->conf->_c5("paper_edit", $this->prow->paperId ? "<0>Edit {sclass} {submission}" : "<0>New {sclass} {submission}", new FmtArg("sclass", $sr->tag)),
             '</span></h2></div>';
 
         $this->_print_pre_status_feedback();
@@ -2545,7 +2528,7 @@ class PaperTable {
 
             // skip unsubmitted reviews;
             // assign page lists actionable reviews separately
-            if (!$canView && $rr->is_ghost()) {
+            if (!$canView && $rr->is_tentative()) {
                 continue;
             }
             if (!$canView && $hideUnviewable) {
@@ -2568,7 +2551,7 @@ class PaperTable {
                 $id .= " #" . $rr->unparse_ordinal_id();
             }
             if ($rr->reviewStatus < ReviewInfo::RS_ADOPTED
-                && !$rr->is_ghost()) {
+                && !$rr->is_tentative()) {
                 $d = $rr->status_description();
                 if ($d === "draft") {
                     $id = "Draft " . $id;

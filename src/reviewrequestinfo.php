@@ -61,7 +61,7 @@ class ReviewRequestInfo {
     }
 
     /** @return bool */
-    function is_ghost() {
+    function is_tentative() {
         return false;
     }
 

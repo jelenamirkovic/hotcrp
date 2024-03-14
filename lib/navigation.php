@@ -50,8 +50,7 @@ class NavigationState {
         $nav = new NavigationState;
 
         // host, protocol, server
-        $http_host = $server["HTTP_HOST"] ?? null;
-        $nav->host = $http_host ?? $server["SERVER_NAME"] ?? null;
+        $nav->host = $server["HTTP_HOST"] ?? $server["SERVER_NAME"] ?? null;
         if ((isset($server["HTTPS"])
              && $server["HTTPS"] !== ""
              && $server["HTTPS"] !== "off")
@@ -65,10 +64,9 @@ class NavigationState {
         }
         $nav->protocol = $x;
         $x .= $nav->host ? : "localhost";
-        if ($http_host === null // HTTP `Host` header should contain port
-            && strpos($x, ":", 6) === false
-            && ($port = $server["SERVER_PORT"])
-            && $port != $xport) {
+        if (($port = $server["SERVER_PORT"])
+            && $port != $xport
+            && strpos($x, ":", 6) === false) {
             $x .= ":" . $port;
         }
         $nav->server = $x;

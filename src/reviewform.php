@@ -171,8 +171,8 @@ class ReviewForm {
             return $f ? [$f] : [];
         }
         $fs = [];
-        foreach (SearchViewCommand::analyze(SearchSplitter::split_balanced_parens($s)) as $sve) {
-            if ($sve->show_action() === "show"
+        foreach (PaperSearch::view_generator(SearchSplitter::split_balanced_parens($s)) as $sve) {
+            if (($sve->action === "show" || $sve->action === "showsort")
                 && ($x = $this->conf->find_all_fields($sve->keyword))
                 && count($x) === 1
                 && $x[0] instanceof Score_ReviewField
@@ -297,7 +297,7 @@ class ReviewForm {
         return $x;
     }
 
-    function text_form(?PaperInfo $prow_in, ?ReviewInfo $rrow_in, Contact $contact) {
+    function text_form(PaperInfo $prow_in = null, ReviewInfo $rrow_in = null, Contact $contact) {
         $prow = $prow_in ?? PaperInfo::make_new($contact, null);
         $rrow = $rrow_in ?? ReviewInfo::make_blank($prow, $contact);
         $revViewScore = $prow->paperId > 0 ? $contact->view_score_bound($prow, $rrow) : $contact->permissive_view_score_bound();
@@ -486,7 +486,7 @@ Ready\n";
         echo Ht::actions($buttons, ["class" => "aab aabig"]);
     }
 
-    function print_form(PaperInfo $prow, ?ReviewInfo $rrow_in, Contact $viewer,
+    function print_form(PaperInfo $prow, ReviewInfo $rrow_in = null, Contact $viewer,
                         ReviewValues $rvalues) {
         $rrow = $rrow_in ?? ReviewInfo::make_blank($prow, $viewer);
         self::check_review_author_seen($prow, $rrow, $viewer);
@@ -651,8 +651,8 @@ Ready\n";
         if ($rrow->reviewStatus >= ReviewInfo::RS_COMPLETED) {
             $rj["submitted"] = true;
         } else {
-            if ($rrow->is_ghost()) {
-                $rj["ghost"] = true;
+            if ($rrow->is_tentative()) {
+                $rj["tentative"] = true;
             }
             if ($rrow->is_subreview()) {
                 $rj["subreview"] = true;
@@ -1215,7 +1215,7 @@ class ReviewValues extends MessageSet {
         $this->rmsg("reviewerEmail", $msg, self::ERROR);
     }
 
-    function check_and_save(Contact $user, ?PaperInfo $prow = null, ?ReviewInfo $rrow = null) {
+    function check_and_save(Contact $user, PaperInfo $prow = null, ReviewInfo $rrow = null) {
         assert(!$rrow || $rrow->paperId === $prow->paperId);
         $this->reviewId = $this->review_ordinal_id = null;
 
@@ -1265,17 +1265,18 @@ class ReviewValues extends MessageSet {
         // maybe create review
         $new_rrid = false;
         if (!$rrow) {
-            $round = isset($this->req["round"]) ? (int) $this->conf->round_number($this->req["round"]) : null;
-            if (($whyNot = $user->perm_create_review($prow, $reviewer, $round))) {
+            $extra = [];
+            if (isset($this->req["round"])) {
+                $extra["round_number"] = (int) $this->conf->round_number($this->req["round"]);
+            }
+            if (($whyNot = $user->perm_create_review($prow, $reviewer, $extra["round_number"] ?? null))) {
                 if ($user !== $reviewer) {
                     $this->reviewer_error(null);
                 }
                 $this->reviewer_error("<5>" . $whyNot->unparse_html());
                 return false;
             }
-            $new_rrid = $user->assign_review($prow->paperId, $reviewer->contactId, $reviewer->isPC ? REVIEW_PC : REVIEW_EXTERNAL, [
-                "selfassign" => $reviewer === $user, "round_number" => $round
-            ]);
+            $new_rrid = $user->assign_review($prow->paperId, $reviewer->contactId, $reviewer->isPC ? REVIEW_PC : REVIEW_EXTERNAL, $extra);
             if (!$new_rrid) {
                 $this->rmsg(null, "<0>Internal error while creating review", self::ERROR);
                 return false;
@@ -1475,11 +1476,14 @@ class ReviewValues extends MessageSet {
         assert($this->paperId == $prow->paperId);
         assert($rrow->paperId == $prow->paperId);
         $old_reviewId = $rrow->reviewId;
-        assert($rrow->reviewId > 0);
+        if ($rrow->reviewId <= 0) {
+            assert($rrow->contactId === $user->contactId);
+            assert($rrow->requestedBy === $user->contactId);
+            assert($rrow->reviewType === REVIEW_PC);
+            assert($rrow->reviewRound === $this->conf->assignment_round($rrow->reviewType < REVIEW_PC));
+        }
         $old_nonempty_view_score = $this->rf->nonempty_view_score($rrow);
         $oldstatus = $rrow->reviewStatus;
-        $rflags = $rrow->rflags;
-        '@phan-var-force int $rflags';
         $admin = $user->allow_administer($prow);
         $usedReviewToken = $user->active_review_token_for($prow, $rrow);
 
@@ -1509,7 +1513,6 @@ class ReviewValues extends MessageSet {
             && $user->isPC
             && !$usedReviewToken) {
             $rrow->set_prop("reviewType", REVIEW_PC);
-            $rflags = ($rflags & ~ReviewInfo::RFM_TYPES) | (1 << REVIEW_PC);
         }
 
         // review body
@@ -1586,29 +1589,23 @@ class ReviewValues extends MessageSet {
         if ($newstatus === ReviewInfo::RS_ACCEPTED
             && $rrow->reviewModified <= 0) {
             $rrow->set_prop("reviewModified", 1);
-            $rflags |= ReviewInfo::RF_LIVE | ReviewInfo::RF_ACCEPTED;
         } else if ($newstatus >= ReviewInfo::RS_DRAFTED
                    && $any_fval_diffs) {
             $rrow->set_prop("reviewModified", $now);
-            $rflags |= ReviewInfo::RF_LIVE | ReviewInfo::RF_ACCEPTED | ReviewInfo::RF_DRAFTED;
         }
         if ($newstatus === ReviewInfo::RS_DELIVERED
             && $rrow->timeApprovalRequested <= 0) {
             $rrow->set_prop("timeApprovalRequested", $now);
-            $rflags |= ReviewInfo::RF_DELIVERED;
         } else if ($newstatus === ReviewInfo::RS_ADOPTED
                    && $rrow->timeApprovalRequested >= 0) {
             $rrow->set_prop("timeApprovalRequested", -$now);
-            $rflags |= ReviewInfo::RF_DELIVERED | ReviewInfo::RF_ADOPTED;
         }
         if ($newstatus >= ReviewInfo::RS_COMPLETED
             && ($rrow->reviewSubmitted ?? 0) <= 0) {
             $rrow->set_prop("reviewSubmitted", $now);
-            $rflags |= ReviewInfo::RF_SUBMITTED;
         } else if ($newstatus < ReviewInfo::RS_COMPLETED
                    && ($rrow->reviewSubmitted ?? 0) > 0) {
             $rrow->set_prop("reviewSubmitted", null);
-            $rflags &= ~ReviewInfo::RF_SUBMITTED;
         }
         if ($newstatus >= ReviewInfo::RS_ADOPTED) {
             $rrow->set_prop("reviewNeedsSubmit", 0);
@@ -1624,7 +1621,6 @@ class ReviewValues extends MessageSet {
             || $reviewBlind != $rrow->reviewBlind) {
             $rrow->set_prop("reviewBlind", $reviewBlind ? 1 : 0);
             $rrow->mark_prop_view_score(VIEWSCORE_ADMINONLY);
-            $rflags = ($rflags & ~ReviewInfo::RF_BLIND) | ($reviewBlind ? ReviewInfo::RF_BLIND : 0);
         }
 
         // notification
@@ -1635,7 +1631,7 @@ class ReviewValues extends MessageSet {
             ? VIEWSCORE_AUTHORDEC
             : VIEWSCORE_AUTHOR;
         $diffinfo = $rrow->prop_diff();
-        if (!$rrow->reviewId || $diffinfo->is_viewable()) {
+        if (!$rrow->reviewId || $rrow->prop_changed()) {
             $rrow->set_prop("reviewViewScore", $view_score);
             // XXX distinction between VIEWSCORE_AUTHOR/VIEWSCORE_AUTHORDEC?
             if ($diffinfo->view_score() >= $author_view_score) {
@@ -1697,8 +1693,7 @@ class ReviewValues extends MessageSet {
         }
 
         // actually affect database
-        $rrow->set_prop("rflags", $rflags);
-        $no_attempt = $rrow->reviewId > 0 && !$diffinfo->is_viewable();
+        $no_attempt = $rrow->reviewId > 0 && !$rrow->prop_changed();
         $result = $rrow->save_prop();
 
         // unlock tables even if problem
@@ -1731,7 +1726,8 @@ class ReviewValues extends MessageSet {
         assert($new_rrow->reviewStatus === $newstatus);
 
         // log updates -- but not if review token is used
-        if (!$usedReviewToken && $diffinfo->is_viewable()) {
+        if (!$usedReviewToken
+            && $rrow->prop_changed()) {
             $log_actions = [];
             if (!$old_reviewId) {
                 $log_actions[] = "started";
@@ -1769,7 +1765,7 @@ class ReviewValues extends MessageSet {
                 . join(", ", $log_fields), $prow);
         }
 
-        if ($old_reviewId > 0 && $diffinfo->is_viewable()) {
+        if ($old_reviewId > 0 && $rrow->prop_changed()) {
             $diffinfo->save_history();
         }
 
@@ -1804,7 +1800,7 @@ class ReviewValues extends MessageSet {
                    && $oldstatus < $newstatus
                    && $rrow->contactId !== $user->contactId) {
             $this->approved[] = $what;
-        } else if ($diffinfo->is_viewable()) {
+        } else if ($rrow->prop_changed()) {
             if ($newstatus >= ReviewInfo::RS_ADOPTED) {
                 $this->updated[] = $what;
             } else {
